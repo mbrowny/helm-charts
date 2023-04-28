@@ -37,7 +37,7 @@ spec:
         {{- end }}
     spec:
 {{ tuple . "nova" (print "console-" $name) | include "kubernetes_pod_anti_affinity" | indent 6 }}
-{{ include "utils.proxysql.pod_settings" . | indent 6 }}
+      {{- include "utils.proxysql.pod_settings" . | indent 6 }}
       hostname: nova-console-{{ $name }}
       volumes:
       - name: nova-etc
@@ -56,18 +56,21 @@ spec:
               - key: db.conf
                 path: nova.conf.d/db.conf
       {{- include "utils.proxysql.volumes" . | indent 6 }}
+      initContainers:
+      {{- tuple . (dict "service" "nova-mariadb" "jobs" (tuple . "db-migrate" | include "job_name")) | include "utils.snippets.kubernetes_entrypoint_init_container" | indent 6 }}
       containers:
       - name: nova-console-{{ $name }}
         image: {{ tuple . (print (title $name) "proxy") | include "container_image_nova" }}
         imagePullPolicy: IfNotPresent
         command:
         - dumb-init
-        - kubernetes-entrypoint
+        - nova-{{ $name }}proxy
+        {{- if $config.args }}
+          {{- range (regexSplit "\\s+" $config.args -1) }}
+        - {{ . }}
+          {{- end }}
+        {{- end }}
         env:
-        - name: COMMAND
-          value: nova-{{ $name }}proxy {{ $config.args }}
-        - name: NAMESPACE
-          value: {{ .Release.Namespace }}
         - name: LANG
           value: en_US.UTF-8
 {{- if .Values.python_warnings }}

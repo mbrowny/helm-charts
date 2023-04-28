@@ -16,21 +16,23 @@ spec:
     spec:
       restartPolicy: OnFailure
       {{- include "utils.proxysql.job_pod_settings" . | indent 6 }}
+      initContainers:
+      {{- $dependencies := dict "jobs" (tuple . "db-migrate" | include "job_name") }}
+      {{- if not .Values.cell2.enabled }}
+        {{ $_ := set $dependencies "services" (print .Release.Name "-mariadb," .Release.Name "-api-mariadb") }}
+      {{- else }}
+      {{ $_ := set $dependencies "services" (print .Release.Name "-mariadb," .Release.Name "-api-mariadb," .Release.Name  "-" .Values.cell2.name "-mariadb") }}
+      {{- end }}
+      {{- tuple . $dependencies | include "utils.snippets.kubernetes_entrypoint_init_container" | indent 6 }}
       containers:
       - name: nova-migrate
         image: {{ tuple . "api" | include "container_image_nova" }}
         imagePullPolicy: IfNotPresent
         command:
-        - kubernetes-entrypoint
+        - /container.init/db-online-migrate
         env:
-        - name: COMMAND
-          value: "/container.init/db-online-migrate"
-        - name: NAMESPACE
-          value: {{ .Release.Namespace }}
-        - name: DEPENDENCY_JOBS
-          value: {{ tuple . "db-migrate" | include "job_name" }}
-        - name: DEPENDENCY_SERVICE
-          value: "{{ .Release.Name }}-mariadb,{{ .Release.Name }}-api-mariadb{{ if eq .Values.cell2.enabled true }},{{ .Values.mariadb_cell2.name }}-mariadb{{ end }}"
+        - name: PYTHONWARNINGS
+          value: {{ .Values.python_warnings | quote }}
         volumeMounts:
         - mountPath: /etc/nova
           name: nova-etc
